@@ -3,6 +3,11 @@ import sys
 from src.camera_handler import CameraHandler
 from src.image_classifier import ImageClassifier
 from src.distance_estimator import DistanceEstimator
+from src.alert import start_alarm, stop_alarm
+
+# monitored classes and threshold (meters)
+ALARM_CLASSES = {'person', 'car', 'truck', 'bus', 'motorbike', 'bicycle', 'pothole'}
+ALARM_DISTANCE_M = 2.0
 
 class RealTimeImageClassifier:
     def __init__(self):
@@ -33,6 +38,21 @@ class RealTimeImageClassifier:
             
             # Add distance estimation
             detections = self.distance_estimator.add_distance_to_detections(detections)
+
+            # Alarm logic: start if any monitored class is within threshold
+            threat_close = False
+            for d in detections:
+                cls = d.get('class_name', '').lower()
+                cls_norm = self.distance_estimator._normalize_class(cls)
+                dist = d.get('distance', -1)
+                if cls_norm in ALARM_CLASSES and dist > 0 and dist <= ALARM_DISTANCE_M:
+                    threat_close = True
+                    break
+
+            if threat_close:
+                start_alarm()
+            else:
+                stop_alarm()
             
             # Draw detections with distance info
             annotated_frame = self.draw_detections_with_distance(frame, detections)

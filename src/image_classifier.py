@@ -5,7 +5,7 @@ from typing import List, Dict, Tuple
 import torch
 
 class ImageClassifier:
-    def __init__(self, model_path: str = "yolov8n.pt"):  # or "yolov11x.pt"
+    def __init__(self, model_path: str = "yolo11n.pt"):  # or "yolov11x.pt"
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.model = YOLO(model_path)
         self.model.to(self.device)

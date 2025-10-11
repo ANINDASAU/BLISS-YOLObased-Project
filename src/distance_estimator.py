@@ -1,62 +1,66 @@
-from turtle import distance
 import cv2
 import numpy as np
 from typing import Dict, List
 
+
 class DistanceEstimator:
     def __init__(self):
-        """Initialize distance estimator with calibration parameters"""
-        # These values need to be calibrated for your specific camera
-        # and object types. These are example values.
-        self.focal_length = 615  # Focal length in pixels (needs calibration)
-        
-        # Known real-world widths for common objects (in cm)
+        """Initialize distance estimator with calibration parameters."""
+        self.focal_length = 615  # pixels; calibrate for your camera
+
+        # Real-world widths in cm for classes you expect to detect
         self.known_widths = {
-            'person': 60,  # Average person width
-            'car': 180,    # Average car width
-            'bottle': 7,   # Standard bottle width
-            'cup': 8,      # Standard cup width
-            'laptop': 35,  # Standard laptop width
-            'cell phone': 7, # Standard phone width
+            'person': 60,
+            'car': 180,
+            'truck': 250,
+            'bus': 250,
+            'bicycle': 60,
+            'motorbike': 80,
+            'pothole': 50,  # approximate; adjust for your dataset
         }
-    
-    def calibrate_focal_length(self, known_distance: float, 
-                              known_width: float, 
-                              pixel_width: float) -> float:
-        """Calibrate focal length using reference measurements"""
-        self.focal_length = (pixel_width * known_distance) / known_width
+
+        # Aliases mapping from model labels to our canonical class names
+        self.class_aliases = {
+            'motorcycle': 'motorbike',
+            'motorbike': 'motorbike',
+            'bicycle': 'bicycle',
+            'car': 'car',
+            'truck': 'truck',
+            'bus': 'bus',
+            'person': 'person',
+        }
+
+    def calibrate_focal_length(self, known_distance_m: float, known_width_cm: float, pixel_width: float) -> float:
+        known_distance_cm = known_distance_m * 100.0
+        self.focal_length = (pixel_width * known_distance_cm) / known_width_cm
         return self.focal_length
-    
-    def estimate_distance(self, object_class: str, pixel_width: float) -> float:
-        if object_class not in self.known_widths:
-        # Assign a default or approximate width to unknown objects, or skip
-        # Optionally, log or warn
-            return -1
-    
-    # Prevent division by zero or too small widths
+
+    def _normalize_class(self, class_name: str) -> str:
+        return self.class_aliases.get(class_name.lower(), class_name.lower())
+
+    def estimate_distance_cm(self, object_class: str, pixel_width: float) -> float:
+        cls = self._normalize_class(object_class)
         if pixel_width <= 0:
             return -1
-    
-        real_width = self.known_widths[object_class]
-        distance = (real_width * self.focal_length) / pixel_width
-        return distance
+        if cls not in self.known_widths:
+            return -1
+        real_width_cm = self.known_widths[cls]
+        distance_cm = (real_width_cm * self.focal_length) / pixel_width
+        return float(distance_cm)
 
-    
     def add_distance_to_detections(self, detections: List[Dict]) -> List[Dict]:
-        """Add distance estimates to detection results"""
         for detection in detections:
-            bbox = detection['bbox']
-            pixel_width = bbox[2] - bbox[0]  # Width in pixels
-            object_class = detection['class_name']
-            
-            distance = self.estimate_distance(object_class, pixel_width)
-            detection['distance'] = distance
-            
-            # Convert to meters for display
-            if distance > 0:
-                distance_m = distance / 100  # Convert cm to meters
-                detection['distance_display'] = f"{distance_m:.1f}m"
+            bbox = detection.get('bbox', [0, 0, 0, 0])
+            pixel_width = max(0, bbox[2] - bbox[0])
+            object_class = detection.get('class_name', '')
+
+            distance_cm = self.estimate_distance_cm(object_class, pixel_width)
+            if distance_cm > 0:
+                distance_m = distance_cm / 100.0
+                detection['distance'] = distance_m
+                detection['distance_display'] = f"{distance_m:.2f}m"
             else:
+                detection['distance'] = -1
                 detection['distance_display'] = "Unknown"
-        
+
         return detections
