@@ -6,7 +6,13 @@ from src.distance_estimator import DistanceEstimator
 from src.alert import start_alarm, stop_alarm
 
 # monitored classes and threshold (meters)
-ALARM_CLASSES = {'person', 'car', 'truck', 'bus', 'motorbike', 'bicycle', 'pothole'}
+VEHICLE_MODEL_CLASSES = {'car', 'truck', 'bus', 'motorbike', 'motorcycle', 'bicycle', 'vehicle'}
+ALLOWED_MODEL_CLASSES = VEHICLE_MODEL_CLASSES.union({'person', 'pothole'})
+
+# For display/alarm purposes collapse vehicle family into a single 'vehicle' label
+DISPLAY_TARGETS = {'person', 'vehicle', 'pothole'}
+
+ALARM_CLASSES = DISPLAY_TARGETS
 ALARM_DISTANCE_M = 2.0
 
 class RealTimeImageClassifier:
@@ -35,6 +41,28 @@ class RealTimeImageClassifier:
             
             # Detect objects in frame
             detections = self.classifier.detect_objects(frame)
+
+            # Filter detections to only allowed classes (person, vehicle family, pothole)
+            filtered = []
+            for d in detections:
+                model_cls = d.get('class_name', '').lower()
+                if model_cls not in ALLOWED_MODEL_CLASSES:
+                    continue
+
+                # Keep original class_name for distance estimation, but add a display_class
+                if model_cls in VEHICLE_MODEL_CLASSES:
+                    d['display_class'] = 'vehicle'
+                elif model_cls == 'person':
+                    d['display_class'] = 'person'
+                elif model_cls == 'pothole':
+                    d['display_class'] = 'pothole'
+                else:
+                    # fallback to original
+                    d['display_class'] = model_cls
+
+                filtered.append(d)
+
+            detections = filtered
             
             # Add distance estimation
             detections = self.distance_estimator.add_distance_to_detections(detections)
@@ -42,10 +70,10 @@ class RealTimeImageClassifier:
             # Alarm logic: start if any monitored class is within threshold
             threat_close = False
             for d in detections:
-                cls = d.get('class_name', '').lower()
-                cls_norm = self.distance_estimator._normalize_class(cls)
+                # use display_class for alarm decisions (person/vehicle/pothole)
+                disp = d.get('display_class', d.get('class_name', '')).lower()
                 dist = d.get('distance', -1)
-                if cls_norm in ALARM_CLASSES and dist > 0 and dist <= ALARM_DISTANCE_M:
+                if disp in ALARM_CLASSES and dist > 0 and dist <= ALARM_DISTANCE_M:
                     threat_close = True
                     break
 
@@ -74,10 +102,11 @@ class RealTimeImageClassifier:
         
         for detection in detections:
             bbox = detection['bbox']
-            class_name = detection['class_name']
+            # use display_class for overlay (shows 'vehicle' instead of 'car')
+            class_name = detection.get('display_class', detection.get('class_name', ''))
             confidence = detection['confidence']
             distance_display = detection.get('distance_display', 'Unknown')
-            
+
             # Label text including distance
             label = f"{class_name}: {confidence:.2f} - {distance_display}"
             
