@@ -16,7 +16,7 @@ class DistanceEstimator:
             'bus': 250,
             'bicycle': 60,
             'motorbike': 80,
-            'pothole': 50,  # approximate; adjust for your dataset
+            'pothole': 50,  
         }
 
         # Aliases mapping from model labels to our canonical class names
@@ -28,6 +28,7 @@ class DistanceEstimator:
             'truck': 'truck',
             'bus': 'bus',
             'person': 'person',
+            'pothole': 'pothole',
         }
 
     def calibrate_focal_length(self, known_distance_m: float, known_width_cm: float, pixel_width: float) -> float:

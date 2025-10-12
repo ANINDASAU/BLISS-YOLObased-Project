@@ -4,10 +4,12 @@ from src.camera_handler import CameraHandler
 from src.image_classifier import ImageClassifier
 from src.distance_estimator import DistanceEstimator
 from src.alert import start_alarm, stop_alarm
+import os
 
 # monitored classes and threshold (meters)
 VEHICLE_MODEL_CLASSES = {'car', 'truck', 'bus', 'motorbike', 'motorcycle', 'bicycle', 'vehicle'}
-ALLOWED_MODEL_CLASSES = VEHICLE_MODEL_CLASSES.union({'person', 'pothole'})
+
+ALLOWED_MODEL_CLASSES = VEHICLE_MODEL_CLASSES.union({'person', 'pothole', 'pothole'})
 
 # For display/alarm purposes collapse vehicle family into a single 'vehicle' label
 DISPLAY_TARGETS = {'person', 'vehicle', 'pothole'}
@@ -21,6 +23,28 @@ class RealTimeImageClassifier:
         try:
             self.camera = CameraHandler(camera_index=0)
             self.classifier = ImageClassifier()
+
+            # Print primary model info (path and class names) for verification
+            try:
+                print("Primary model loaded. Class names:", getattr(self.classifier.model, 'names', self.classifier.class_names))
+            except Exception:
+                pass
+
+            # load a secondary custom model (only used for pothole detections)
+            project_root = os.path.abspath(os.path.dirname(__file__))
+            custom_model_path = os.path.join(project_root, 'best.pt')
+            self.custom_classifier = None
+            if os.path.exists(custom_model_path):
+                try:
+                    print(f"Found custom model at {custom_model_path}, loading as secondary detector...")
+                    self.custom_classifier = ImageClassifier(model_path=custom_model_path)
+                    # Print custom model info for verification
+                    try:
+                        print("Custom model loaded. Class names:", getattr(self.custom_classifier.model, 'names', self.custom_classifier.class_names))
+                    except Exception:
+                        pass
+                except Exception as e:
+                    print(f"Failed to load custom model {custom_model_path}: {e}\nContinuing with primary model only.")
             self.distance_estimator = DistanceEstimator()
             print("System initialized successfully!")
         except Exception as e:
@@ -39,8 +63,23 @@ class RealTimeImageClassifier:
                 print("Failed to capture frame")
                 break
             
-            # Detect objects in frame
+            # Detect objects in frame using the primary model (preserves prior behaviour)
             detections = self.classifier.detect_objects(frame)
+
+            # If we have a custom model, run it too but only keep pothole-like labels
+            if getattr(self, 'custom_classifier', None) is not None:
+                try:
+                    custom_detections = self.custom_classifier.detect_objects(frame)
+                    # only keep pothole-related labels from custom model
+                    pothole_labels = {'pothole', 'pothol'}
+                    for cd in custom_detections:
+                        if cd.get('class_name', '').lower() in pothole_labels:
+                            # mark origin (optional) and add to main detections
+                            cd['origin'] = 'custom'
+                            detections.append(cd)
+                except Exception as e:
+                    # don't fail the whole loop if custom detection errors
+                    print(f"Warning: custom model detection failed: {e}")
 
             # Filter detections to only allowed classes (person, vehicle family, pothole)
             filtered = []
@@ -54,7 +93,7 @@ class RealTimeImageClassifier:
                     d['display_class'] = 'vehicle'
                 elif model_cls == 'person':
                     d['display_class'] = 'person'
-                elif model_cls == 'pothole':
+                elif model_cls == 'pothole' or model_cls == 'pothol':
                     d['display_class'] = 'pothole'
                 else:
                     # fallback to original
