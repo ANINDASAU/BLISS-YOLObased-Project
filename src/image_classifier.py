@@ -24,8 +24,8 @@ class ImageClassifier:
                 for box in boxes:
                     # Extract bounding box coordinates
                     x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()
-                    confidence = box.conf.cpu().numpy()
-                    class_id = int(box.cls.cpu().numpy())
+                    confidence = float(box.conf.cpu().numpy().item())
+                    class_id = int(box.cls.cpu().numpy().item())
                     class_name = self.class_names[class_id]
                     
                     detection = {
